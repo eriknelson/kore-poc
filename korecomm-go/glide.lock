@@ -1,0 +1,19 @@
+hash: 31a6a5a0c054c2bf2e55258e9a2ea449e7e1d9b68f7b2d19c00a6b1f73e4797b
+updated: 2017-09-16T14:50:02.257747053-04:00
+imports:
+- name: github.com/golang/glog
+  version: 23def4e6c14b4da8ac2ed8007337bc5eb5007998
+- name: github.com/pborman/uuid
+  version: e790cca94e6cc75c7064b1332e63811d4aae1a53
+- name: github.com/sirupsen/logrus
+  version: f006c2ac4710855cf0f916dd6b77acf6b048dc6e
+- name: golang.org/x/crypto
+  version: b0c9c05bfe149df95eb1d25642162cca051e0466
+  subpackages:
+  - ssh/terminal
+- name: golang.org/x/sys
+  version: 062cd7e4e68206d8bab9b18396626e855c992658
+  subpackages:
+  - unix
+  - windows
+testImports: []
