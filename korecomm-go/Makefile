@@ -21,7 +21,6 @@ vendor:
 
 plugins: $(PLUGIN_SOURCES)
 	@go build -buildmode=plugin -o ${BUILD_DIR}/kore.plugin.bacon.so -i -ldflags="-s -w" ./pkg/extension/plugin/bacon.go
-	@go build -buildmode=plugin -o ${BUILD_DIR}/kore.plugin.foo.so -i -ldflags="-s -w" ./pkg/extension/plugin/foo.go
 
 korecomm: $(SOURCES) plugins
 	@go build -o ${BUILD_DIR}/korecomm -i -ldflags="-s -w" ./cmd/korecomm
@@ -33,8 +32,8 @@ clean:
 	@rm -rf ${BUILD_DIR}
 
 run: korecomm
-	@PLUGIN_DIR=${PROJECT_ROOT}/build \
-	ADAPTER_DIR=${PROJECT_ROOT}/build \
+	@KORECOMM_PLUGIN_DIR=${PROJECT_ROOT}/build \
+	KORECOMM_ADAPTER_DIR=${PROJECT_ROOT}/build \
 	./build/korecomm
 
 image:
