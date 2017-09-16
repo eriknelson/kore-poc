@@ -12,6 +12,7 @@ import (
 type Engine struct {
 	ingressBuffer chan IngressMessage
 	egressBuffer  chan EgressMessage
+	plugins       map[string]*Plugin
 }
 
 // NewEngine - creates a new work engine
@@ -21,6 +22,7 @@ func NewEngine() *Engine {
 	return &Engine{
 		ingressBuffer: make(chan IngressMessage, bufferSize),
 		egressBuffer:  make(chan EgressMessage, bufferSize),
+		plugins:       make(map[string]*Plugin),
 	}
 }
 
@@ -40,6 +42,10 @@ func (e *Engine) Run() error {
 	return nil
 }
 
+func (e *Engine) SendMessage(originator Originator, responseContent string) {
+	log.Debug("Engine::SendMessage -> %s", responseContent)
+}
+
 func (e *Engine) loadPlugins() error {
 	config := config.GetPluginConfig()
 	// Check that requested plugins are available in dir, log if not
@@ -50,13 +56,20 @@ func (e *Engine) loadPlugins() error {
 			config.Dir,
 			fmt.Sprintf("%s.so", pluginName),
 		)
+
 		loadedPlugin, err := LoadPlugin(pluginFile)
 		if err != nil {
 			return err
 		}
 
-		loadedPlugin.Hello(IngressMessage{"derp"})
+		e.plugins[loadedPlugin.Name] = loadedPlugin
 	}
+
+	log.Info("Successfully loaded plugins:")
+	for pluginName, _ := range e.plugins {
+		log.Infof("-> %s", pluginName)
+	}
+
 	return nil
 }
 
