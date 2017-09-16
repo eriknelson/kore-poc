@@ -14,6 +14,9 @@ const FatalExitCode = 1
 func main() {
 	var err error
 
+	// TODO: Should be configurable
+	log.SetLevel(log.DebugLevel)
+
 	log.Info("============================================================")
 	log.Info("                 Kore::Comm Golang POC")
 	log.Info("============================================================")
