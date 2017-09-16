@@ -37,14 +37,16 @@ run: korecomm
 	ADAPTER_DIR=${PROJECT_ROOT}/build \
 	./build/korecomm
 
-image: prepare-build-image
-	docker build -t ${IMAGE}:${TAG}
+image:
+	docker build -t ${IMAGE}:${TAG} ${PROJECT_ROOT}
+
+run-image:
+	docker run -it ${IMAGE}:${TAG}
 
 push:
 	docker push ${IMAGE}:${TAG}
 
-test:
-	go test ./pkg/...
+#test:
+	#go test ./pkg/...
 
-.PHONY: vendor image push clean test
-#.PHONY: vendor image push clean test run
+.PHONY: vendor image push clean run image run-image push

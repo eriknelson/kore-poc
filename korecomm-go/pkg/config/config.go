@@ -6,6 +6,11 @@ import (
 	"sync"
 )
 
+const (
+	PluginDirEnvVar  = "KORECOMM_PLUGIN_DIR"
+	AdapterDirEnvVar = "KORECOMM_ADAPTER_DIR"
+)
+
 type EngineConfig struct {
 	BufferSize uint
 }
@@ -30,7 +35,7 @@ var mockConfig = map[string]interface{}{
 	},
 	"plugins": PluginConfig{
 		ExtensionConfig: ExtensionConfig{
-			Dir: os.Getenv("PLUGIN_DIR"),
+			Dir: os.Getenv(PluginDirEnvVar),
 			Enabled: []string{
 				"kore.plugin.bacon",
 				"kore.plugin.foo",
@@ -39,7 +44,7 @@ var mockConfig = map[string]interface{}{
 	},
 	"adapters": AdapterConfig{
 		ExtensionConfig: ExtensionConfig{
-			Dir: os.Getenv("ADAPTER_DIR"),
+			Dir: os.Getenv(AdapterDirEnvVar),
 			Enabled: []string{
 				"kore.adapter.discord",
 				"kore.adapter.irc",
