@@ -8,19 +8,11 @@ SOURCES          := $(shell find . -name '*.go' -not -path "*/vendor/*" -not -pa
 .DEFAULT_GOAL    := build
 PROJECT_ROOT := ""$(abspath $(lastword $(MAKEFILE_LIST)))/..""
 
-PLUGINS = \
-					kore.plugin.bacon \
-					kore.plugin.foo \
-
-ADAPTERS = \
-					kore.adapter.discord \
-					kore.adapter.irc \
-
 vendor:
 	@glide install -v
 
 plugins: $(PLUGIN_SOURCES)
-	@go build -buildmode=plugin -o ${BUILD_DIR}/kore.plugin.bacon.so -i -ldflags="-s -w" ./pkg/extension/plugin/bacon.go
+	@go build -buildmode=plugin -o ${BUILD_DIR}/bacon.plugins.kore.nsk.io.so -i -ldflags="-s -w" ./pkg/extension/plugin/bacon.go
 
 korecomm: $(SOURCES) plugins
 	@go build -o ${BUILD_DIR}/korecomm -i -ldflags="-s -w" ./cmd/korecomm
