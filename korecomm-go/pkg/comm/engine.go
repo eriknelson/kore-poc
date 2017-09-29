@@ -39,25 +39,40 @@ func (e *Engine) LoadExtensions() error {
 	return nil
 }
 
-func (e *Engine) Start() error {
+func (e *Engine) Start() {
 	log.Debug("Engine::Start")
 
-	// TODO: spawn adapter listeners
-	// Fan-in to aggregator
-	//aggregator := make(chan AdapterIngressMessage)
-	// for adapter in adapters
-	// adapterchan := (chan<- AdapterIngressMessage)
-	// go func(c) {
-	//   adapter.Listen(c)
-	//   for msg := range c {
-	//      aggregator <- msg
-	//   }
-	// }()
-	//select {
-	//case msg <- agg:
-	//  route to plugin...
+	// AdagerIngressMessage aggregation channel
+	aggregationInCh := make(chan AdapterIngressMessage)
 
-	return nil
+	// Spawn listening routines for each adapter
+	for _, adapter := range e.adapters {
+		adapterInCh := make(chan AdapterIngressMessage)
+
+		go func(aggCh <-chan AdapterIngressMessage, adapterCh chan AdapterIngressMessage) {
+			// Tell the adapter to start listening and sending messages back via
+			// their own ingress channel. Listen should be non-blocking!
+			adapter.Listen(adapterCh)
+
+			// Have the listening routine sit and wait for messages back from the
+			// adapter. Once received, immediatelly pass them into the aggreation
+			// channel for processing.
+			for adapterInMsg := range adapterCh {
+				aggregationInCh <- adapterInMsg
+				// TODO: will need adapter name, construct IngressMessage here.
+			}
+		}(aggregationInCh, adapterInCh)
+	}
+
+	for {
+		select {
+		case adapterInMsg := <-aggregationInCh:
+			log.Debugf("Engine::routeIngress -- Identity:[ %s ], Content: [ %s ]",
+				adapterInMsg.Identity,
+				adapterInMsg.Content,
+			)
+		}
+	}
 }
 
 func (e *Engine) SendMessage(originator Originator, responseContent string) {

@@ -7,25 +7,31 @@ import (
 	"time"
 )
 
-const intervalSeconds = 5
+const intervalSeconds = 1
 
 func Name() string {
 	// Reverse DNS identifiers
 	return "discord.adapters.kore.nsk.io"
 }
 
-func Listen(inChan chan<- comm.AdapterIngressMessage) {
+func Listen(ch chan<- comm.AdapterIngressMessage) {
 	log.Debug("discord.adapters::Listen, spawning ticker")
-	go func(inChan chan<- comm.AdapterIngressMessage) {
+	go func(ch chan<- comm.AdapterIngressMessage) {
 		// In theory, there would be some stop condition here that would done <- true,
 		// Ticking perpetually for the sake of demonstration
 		ticker := time.NewTicker(intervalSeconds * time.Second)
-		count := 0
+
+		count := 1
+		tick(count, ch)
 		for _ = range ticker.C {
-			log.Debugf("discord.adapters::Tick, sending message -- %d ", count)
-			content := fmt.Sprintf("Tick count -> [ %d ]", count)
-			inChan <- comm.AdapterIngressMessage{Identity: "nsk", Content: content}
 			count++
+			tick(count, ch)
 		}
-	}(inChan)
+	}(ch)
+}
+
+func tick(count int, ch chan<- comm.AdapterIngressMessage) {
+	log.Debugf("discord.adapters::Tick, sending message -- %d ", count)
+	content := fmt.Sprintf("Tick count -> [ %d ]", count)
+	ch <- comm.AdapterIngressMessage{Identity: "nsk", Content: content}
 }
