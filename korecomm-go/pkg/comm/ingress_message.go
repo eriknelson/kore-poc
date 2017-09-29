@@ -1,8 +1,8 @@
 package comm
 
 type Originator struct {
-	Identity string
-	Platform string
+	Identity    string
+	AdapterName string
 }
 
 type IngressMessage struct {

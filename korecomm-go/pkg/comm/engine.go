@@ -39,17 +39,22 @@ func (e *Engine) LoadExtensions() error {
 	return nil
 }
 
+type aggMsg struct {
+	AdapterName           string
+	AdapterIngressMessage AdapterIngressMessage
+}
+
 func (e *Engine) Start() {
 	log.Debug("Engine::Start")
 
 	// AdagerIngressMessage aggregation channel
-	aggregationInCh := make(chan AdapterIngressMessage)
+	aggregationInCh := make(chan aggMsg)
 
 	// Spawn listening routines for each adapter
 	for _, adapter := range e.adapters {
 		adapterInCh := make(chan AdapterIngressMessage)
 
-		go func(aggCh <-chan AdapterIngressMessage, adapterCh chan AdapterIngressMessage) {
+		go func(name string, aggCh <-chan aggMsg, adapterCh chan AdapterIngressMessage) {
 			// Tell the adapter to start listening and sending messages back via
 			// their own ingress channel. Listen should be non-blocking!
 			adapter.Listen(adapterCh)
@@ -58,21 +63,29 @@ func (e *Engine) Start() {
 			// adapter. Once received, immediatelly pass them into the aggreation
 			// channel for processing.
 			for adapterInMsg := range adapterCh {
-				aggregationInCh <- adapterInMsg
-				// TODO: will need adapter name, construct IngressMessage here.
+				aggregationInCh <- aggMsg{name, adapterInMsg}
 			}
-		}(aggregationInCh, adapterInCh)
+		}(adapter.Name, aggregationInCh, adapterInCh)
 	}
 
 	for {
 		select {
-		case adapterInMsg := <-aggregationInCh:
-			log.Debugf("Engine::routeIngress -- Identity:[ %s ], Content: [ %s ]",
-				adapterInMsg.Identity,
-				adapterInMsg.Content,
+		case aggMsg := <-aggregationInCh:
+			e.routeIngress(
+				processAdapterIngress(aggMsg.AdapterName, aggMsg.AdapterIngressMessage),
 			)
 		}
 	}
+}
+
+func (e *Engine) routeIngress(cmd string, im IngressMessage) {
+	log.Debugf("Engine::routeIngress -- cmd:[ %s ], IngressMessage: %+v", cmd, im)
+
+	// TODO: Apply manifest to get set of fns
+	// TODO: Execute all cmds in goroutines, wrap up CmdPayload in some sugar so the
+	// plugins don't have to care about closing channels
+	// TODO: Pass responses off to egress! Something should check for no response
+	// case after cmd call. if not, call and close, continue on your way.
 }
 
 func (e *Engine) SendMessage(originator Originator, responseContent string) {

@@ -47,3 +47,16 @@ func LoadAdapter(adapterFile string) (*Adapter, error) {
 
 	return &a, nil
 }
+
+func processAdapterIngress(adapterName string, am AdapterIngressMessage) (string, IngressMessage) {
+	cmd := extractCmd(am.Content)
+	return cmd, IngressMessage{
+		Originator: Originator{Identity: am.Identity, AdapterName: adapterName},
+		Content:    am.Content,
+	}
+}
+
+func extractCmd(content string) string {
+	// TODO: Extract cmd
+	return "mock_cmd"
+}
