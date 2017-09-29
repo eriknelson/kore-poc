@@ -46,6 +46,8 @@ func (e *Engine) SendMessage(originator Originator, responseContent string) {
 	log.Debug("Engine::SendMessage -> %s", responseContent)
 }
 
+// NOTE: load{Plugins,Adapters} are similar enough they could probably be made
+// generic and share path, this is done in korecomm-ruby.
 func (e *Engine) loadPlugins() error {
 	config := config.GetPluginConfig()
 	// Check that requested plugins are available in dir, log if not
