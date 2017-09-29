@@ -146,26 +146,3 @@ func (e *Engine) loadAdapters() error {
 	}
 	return nil
 }
-
-// Work - is the interface that wraps the basic run method.
-//type Work interface {
-//Run(token string, msgBuffer chan<- WorkMsg)
-//}
-
-// StartNewJob - Starts a job in an new goroutine. returns token, or generated token if an empty token is passed in.
-//func (engine *Engine) StartNewJob(token string, work Work) string {
-//var jobToken string
-
-//if token == "" {
-//jobToken = uuid.New()
-//} else {
-//jobToken = token
-//}
-//go work.Run(jobToken, engine.msgBuffer)
-//return jobToken
-//}
-
-// AttachSubscriber - Attach a subscriber to the engine. Will send the WorkMsg to the subscribers through the message buffer.
-//func (engine *Engine) AttachSubscriber(subscriber WorkSubscriber) {
-//subscriber.Subscribe(engine.msgBuffer)
-//}
