@@ -10,4 +10,10 @@ type IngressMessage struct {
 	Originator Originator
 }
 
-// Some other junk
+// AdapterIngressMessage - Similar to an Ingress, but one expected to be
+// used by the adapters themselves. The Engine will annotate them with the
+// full Originator type as an IngressMessage before passing on to the Plugin.
+type AdapterIngressMessage struct {
+	Identity string
+	Content  string
+}
