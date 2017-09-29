@@ -2,7 +2,7 @@ package comm
 
 import (
 	log "github.com/sirupsen/logrus"
-	"plugin"
+	goplugin "plugin"
 )
 
 type Plugin struct {
@@ -26,26 +26,26 @@ type CommandPayload struct {
 func LoadPlugin(pluginFile string) (*Plugin, error) {
 	p := Plugin{}
 
-	rawPlugin, err := plugin.Open(pluginFile)
+	rawGoPlugin, err := goplugin.Open(pluginFile)
 	if err != nil {
 		return nil, err
 	}
 
-	nameSym, err := rawPlugin.Lookup("Name")
+	nameSym, err := rawGoPlugin.Lookup("Name")
 	if err != nil {
 		return nil, err
 	}
 	p.fnName = nameSym.(func() string)
 	p.Name = p.fnName()
 
-	helpSym, err := rawPlugin.Lookup("Help")
+	helpSym, err := rawGoPlugin.Lookup("Help")
 	if err != nil {
 		return nil, err
 	}
 	p.fnHelp = helpSym.(func() string)
 	p.Help = p.fnHelp()
 
-	manifestSym, err := rawPlugin.Lookup("Manifest")
+	manifestSym, err := rawGoPlugin.Lookup("Manifest")
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +53,7 @@ func LoadPlugin(pluginFile string) (*Plugin, error) {
 
 	p.Manifest = make(map[string]func(CommandPayload))
 	for cmdRegex, cmdFnName := range p.fnManifest() {
-		cmdSym, err := rawPlugin.Lookup(cmdFnName)
+		cmdSym, err := rawGoPlugin.Lookup(cmdFnName)
 		if err != nil {
 			log.Error("Error occurred while looking up command for plugin %s: %s", p.Name, err.Error())
 			continue

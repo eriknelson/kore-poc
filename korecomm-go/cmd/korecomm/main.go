@@ -38,7 +38,7 @@ func main() {
 
 	go func() {
 		log.Info("Starting engine")
-		engine.Run()
+		engine.Start()
 	}()
 
 	// Listen for shutdown signals

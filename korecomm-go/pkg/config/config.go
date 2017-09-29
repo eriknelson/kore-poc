@@ -45,8 +45,7 @@ var mockConfig = map[string]interface{}{
 		ExtensionConfig: ExtensionConfig{
 			Dir: os.Getenv(AdapterDirEnvVar),
 			Enabled: []string{
-				"kore.adapter.discord",
-				"kore.adapter.irc",
+				"discord.adapters.kore.nsk.io",
 			},
 		},
 	},

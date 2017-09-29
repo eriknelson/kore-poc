@@ -1,5 +1,9 @@
 package comm
 
+import (
+	goplugin "plugin"
+)
+
 type Adapter struct {
 	Name string
 
@@ -18,4 +22,28 @@ func (a *Adapter) Listen(inChan chan<- AdapterIngressMessage) {
 	// written and immediately having their channels close or leaked. fnListen
 	// is expected to be long lived.
 	a.fnListen(inChan)
+}
+
+func LoadAdapter(adapterFile string) (*Adapter, error) {
+	a := Adapter{}
+
+	rawGoPlugin, err := goplugin.Open(adapterFile)
+	if err != nil {
+		return nil, err
+	}
+
+	nameSym, err := rawGoPlugin.Lookup("Name")
+	if err != nil {
+		return nil, err
+	}
+	a.fnName = nameSym.(func() string)
+	a.Name = a.fnName()
+
+	listenSym, err := rawGoPlugin.Lookup("Listen")
+	if err != nil {
+		return nil, err
+	}
+	a.fnListen = listenSym.(func(chan<- AdapterIngressMessage))
+
+	return &a, nil
 }

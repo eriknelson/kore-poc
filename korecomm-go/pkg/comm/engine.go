@@ -8,14 +8,15 @@ import (
 	//"github.com/pborman/uuid"
 )
 
-// Engine - heart of KoreComm, routes ingress and egress messages
+// Engine - Heart of KoreComm, routes ingress and egress messages.
 type Engine struct {
 	ingressBuffer chan IngressMessage
 	egressBuffer  chan EgressMessage
 	plugins       map[string]*Plugin
+	adapters      map[string]*Adapter
 }
 
-// NewEngine - creates a new work engine
+// NewEngine - Creates a new work engine.
 func NewEngine() *Engine {
 	bufferSize := config.GetEngineConfig().BufferSize
 
@@ -23,6 +24,7 @@ func NewEngine() *Engine {
 		ingressBuffer: make(chan IngressMessage, bufferSize),
 		egressBuffer:  make(chan EgressMessage, bufferSize),
 		plugins:       make(map[string]*Plugin),
+		adapters:      make(map[string]*Adapter),
 	}
 }
 
@@ -37,8 +39,24 @@ func (e *Engine) LoadExtensions() error {
 	return nil
 }
 
-func (e *Engine) Run() error {
-	log.Debug("Engine::Run")
+func (e *Engine) Start() error {
+	log.Debug("Engine::Start")
+
+	// TODO: spawn adapter listeners
+	// Fan-in to aggregator
+	//aggregator := make(chan AdapterIngressMessage)
+	// for adapter in adapters
+	// adapterchan := (chan<- AdapterIngressMessage)
+	// go func(c) {
+	//   adapter.Listen(c)
+	//   for msg := range c {
+	//      aggregator <- msg
+	//   }
+	// }()
+	//select {
+	//case msg <- agg:
+	//  route to plugin...
+
 	return nil
 }
 
@@ -46,8 +64,8 @@ func (e *Engine) SendMessage(originator Originator, responseContent string) {
 	log.Debug("Engine::SendMessage -> %s", responseContent)
 }
 
-// NOTE: load{Plugins,Adapters} are similar enough they could probably be made
-// generic and share path, this is done in korecomm-ruby.
+// TODO: load{Plugins,Adapters} are almost identical. Should make extension
+// loading generic.
 func (e *Engine) loadPlugins() error {
 	config := config.GetPluginConfig()
 	// Check that requested plugins are available in dir, log if not
@@ -77,10 +95,26 @@ func (e *Engine) loadPlugins() error {
 
 func (e *Engine) loadAdapters() error {
 	config := config.GetAdapterConfig()
-	// Check that requested plugins are available in dir, log if not
+	// Check that requested adapters are available in dir, log if not
 	log.Infof("Loading adapters from: %v", config.Dir)
 	for _, adapterName := range config.Enabled {
 		log.Infof("-> %v", adapterName)
+		adapterFile := filepath.Join(
+			config.Dir,
+			fmt.Sprintf("%s.so", adapterName),
+		)
+
+		loadedAdapter, err := LoadAdapter(adapterFile)
+		if err != nil {
+			return err
+		}
+
+		e.adapters[loadedAdapter.Name] = loadedAdapter
+
+		log.Info("Successfully loaded plugins:")
+		for adapterName, _ := range e.adapters {
+			log.Infof("-> %s", adapterName)
+		}
 	}
 	return nil
 }
