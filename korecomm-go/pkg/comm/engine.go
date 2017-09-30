@@ -68,7 +68,7 @@ func (e *Engine) Start() {
 	for _, adapter := range e.adapters {
 		adapterCh := make(chan RawIngressMessage)
 
-		go func(name string, rawIngressBuffer chan<- rawIngressBufferMsg, adapterch chan RawIngressMessage) {
+		go func(adapter *Adapter, adapterch chan RawIngressMessage) {
 			// Tell the adapter to start listening and sending messages back via
 			// their own ingress channel. Listen should be non-blocking!
 			adapter.Listen(adapterCh)
@@ -77,9 +77,9 @@ func (e *Engine) Start() {
 			// adapter. Once received, immediatelly pass them into the raw imsg buffer
 			// channel for processing.
 			for ribm := range adapterCh {
-				rawIngressBuffer <- rawIngressBufferMsg{name, ribm}
+				e.rawIngressBuffer <- rawIngressBufferMsg{adapter.Name, ribm}
 			}
-		}(adapter.Name, e.rawIngressBuffer, adapterCh)
+		}(adapter, adapterCh)
 	}
 
 	for {
@@ -220,18 +220,20 @@ func (e *Engine) loadAdapters() error {
 			config.Dir,
 			fmt.Sprintf("%s.so", adapterName),
 		)
+		log.Infof("file: %s", adapterFile)
 
 		loadedAdapter, err := LoadAdapter(adapterFile)
 		if err != nil {
 			return err
 		}
 
+		loadedAdapter.Init()
 		e.adapters[loadedAdapter.Name] = loadedAdapter
+	}
 
-		log.Info("Successfully loaded plugins:")
-		for adapterName, _ := range e.adapters {
-			log.Infof("-> %s", adapterName)
-		}
+	log.Info("Successfully loaded adapters:")
+	for adapterName, _ := range e.adapters {
+		log.Infof("-> %s", adapterName)
 	}
 	return nil
 }

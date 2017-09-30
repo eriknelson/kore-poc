@@ -14,7 +14,7 @@ var (
 type Adapter struct {
 	Name string
 
-	//fnInit        func(MessageReceivedCallback)
+	fnInit        func()
 	fnSendMessage func(string)
 	fnName        func() string
 	fnListen      func(chan<- RawIngressMessage)
@@ -63,7 +63,17 @@ func LoadAdapter(adapterFile string) (*Adapter, error) {
 	}
 	a.fnSendMessage = sendMessageSym.(func(string))
 
+	initSym, err := rawGoPlugin.Lookup("Init")
+	if err != nil {
+		return nil, err
+	}
+	a.fnInit = initSym.(func())
+
 	return &a, nil
+}
+
+func (a *Adapter) Init() {
+	a.fnInit()
 }
 
 func isCmd(rawContent string) bool {

@@ -4,19 +4,18 @@ TAG              ?= latest
 IMAGE            ?= $(REGISTRY)/$(ORG)/korecomm-go-poc
 BUILD_DIR        = "${GOPATH}/src/github.com/hegemone/kore-poc/korecomm-go/build"
 SOURCES          := $(shell find . -name '*.go' -not -path "*/vendor/*" -not -path "*/extensions/*")
-PLUGIN_SOURCES   := $(shell find ./pkg/extension/plugin -name '*.go' -not -path "*/vendor/*")
-ADAPTER_SOURCES  := $(shell find ./pkg/extension/adapter -name '*.go' -not -path "*/vendor/*")
-.DEFAULT_GOAL    := build
 PROJECT_ROOT := ""$(abspath $(lastword $(MAKEFILE_LIST)))/..""
+.DEFAULT_GOAL    := build
 
 vendor:
 	@glide install -v
 
 plugins: $(PLUGIN_SOURCES)
-	@go build -buildmode=plugin -o ${BUILD_DIR}/bacon.plugins.kore.nsk.io.so -i -ldflags="-s -w" $(PLUGIN_SOURCES)
+	@go build -buildmode=plugin -o ${BUILD_DIR}/bacon.plugins.kore.nsk.io.so -i -ldflags="-s -w" ./pkg/extension/plugin/bacon.go
 
 adapters: $(ADAPTER_SOURCES)
-	@go build -buildmode=plugin -o ${BUILD_DIR}/discord.adapters.kore.nsk.io.so -i -ldflags="-s -w" $(ADAPTER_SOURCES)
+	@go build -buildmode=plugin -o ${BUILD_DIR}/ex-discord.adapters.kore.nsk.io.so -i -ldflags="-s -w" ./pkg/extension/adapter/discord.go
+	@go build -buildmode=plugin -o ${BUILD_DIR}/ex-irc.adapters.kore.nsk.io.so -i -ldflags="-s -w" ./pkg/extension/adapter/irc.go
 
 korecomm: $(SOURCES) adapters plugins
 	@go build -o ${BUILD_DIR}/korecomm -i -ldflags="-s -w" ./cmd/korecomm

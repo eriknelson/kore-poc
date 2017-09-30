@@ -6,24 +6,24 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var _discordClient *mock.PlatformClient
+var _ircClient *mock.PlatformClient
 
 func Init() {
-	log.Info("ex-discord.adapters::Init")
-	_discordClient = mock.NewPlatformClient("discord")
+	log.Info("ex-irc.adapters::Init")
+	_ircClient = mock.NewPlatformClient("irc")
 }
 
 func Name() string {
-	return "ex-discord.adapters.kore.nsk.io"
+	return "ex-irc.adapters.kore.nsk.io"
 }
 
 func Listen(ingressCh chan<- comm.RawIngressMessage) {
-	log.Debug("ex-discord.adapters::Listen")
+	log.Debug("ex-irc.adapters::Listen")
 
-	_discordClient.Connect()
+	_ircClient.Connect()
 
 	go func() {
-		for clientMsg := range _discordClient.Chat {
+		for clientMsg := range _ircClient.Chat {
 			ingressCh <- comm.RawIngressMessage{
 				Identity:   clientMsg.User,
 				RawContent: clientMsg.Message,
@@ -33,5 +33,5 @@ func Listen(ingressCh chan<- comm.RawIngressMessage) {
 }
 
 func SendMessage(m string) {
-	_discordClient.SendMessage(m)
+	_ircClient.SendMessage(m)
 }

@@ -1,7 +1,6 @@
 package config
 
 import (
-	//log "github.com/sirupsen/logrus"
 	"os"
 	"sync"
 )
@@ -45,7 +44,8 @@ var mockConfig = map[string]interface{}{
 		ExtensionConfig: ExtensionConfig{
 			Dir: os.Getenv(AdapterDirEnvVar),
 			Enabled: []string{
-				"discord.adapters.kore.nsk.io",
+				"ex-discord.adapters.kore.nsk.io",
+				"ex-irc.adapters.kore.nsk.io",
 			},
 		},
 	},

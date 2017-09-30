@@ -6,6 +6,7 @@ import (
 	"syscall"
 
 	"github.com/hegemone/kore-poc/korecomm-go/pkg/comm"
+	"github.com/hegemone/kore-poc/korecomm-go/pkg/mock"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -15,8 +16,8 @@ func main() {
 	var err error
 
 	// TODO: Should be configurable
-	//log.SetLevel(log.DebugLevel)
-	log.SetLevel(log.InfoLevel)
+	log.SetLevel(log.DebugLevel)
+	//log.SetLevel(log.InfoLevel)
 
 	log.Info("============================================================")
 	log.Info("                 Kore::Comm Golang POC")
@@ -29,6 +30,10 @@ func main() {
 		log.Fatal(err.Error())
 		os.Exit(FatalExitCode)
 	}
+
+	// Start the demux early
+	demux := mock.StdinDemuxInstance()
+	demux.Listen()
 
 	engine := comm.NewEngine()
 
