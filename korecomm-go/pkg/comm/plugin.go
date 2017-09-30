@@ -3,24 +3,24 @@ package comm
 import (
 	log "github.com/sirupsen/logrus"
 	goplugin "plugin"
+	"regexp"
 )
 
-type Plugin struct {
-	Name     string
-	Help     string
-	Manifest map[string]func(CommandPayload)
+type CmdFn func(*CmdDelegate)
 
-	fnName     func() string
-	fnHelp     func() string
-	fnManifest func() map[string]string
+type CmdLink struct {
+	Regexp *regexp.Regexp
+	CmdFn  CmdFn
 }
 
-type SendResponseFn func(string)
+type Plugin struct {
+	Name        string
+	Help        string
+	CmdManifest map[string]CmdLink
 
-type CommandPayload struct {
-	SendResponse   SendResponseFn
-	IngressMessage *IngressMessage
-	Submatches     []string
+	fnName        func() string
+	fnHelp        func() string
+	fnCmdManifest func() map[string]string
 }
 
 func LoadPlugin(pluginFile string) (*Plugin, error) {
@@ -45,21 +45,28 @@ func LoadPlugin(pluginFile string) (*Plugin, error) {
 	p.fnHelp = helpSym.(func() string)
 	p.Help = p.fnHelp()
 
-	manifestSym, err := rawGoPlugin.Lookup("Manifest")
+	cmdManifestSym, err := rawGoPlugin.Lookup("CmdManifest")
 	if err != nil {
 		return nil, err
 	}
-	p.fnManifest = manifestSym.(func() map[string]string)
+	p.fnCmdManifest = cmdManifestSym.(func() map[string]string)
 
-	p.Manifest = make(map[string]func(CommandPayload))
-	for cmdRegex, cmdFnName := range p.fnManifest() {
-		cmdSym, err := rawGoPlugin.Lookup(cmdFnName)
+	p.CmdManifest = make(map[string]CmdLink)
+	for cmdRegexStr, cmdFnName := range p.fnCmdManifest() {
+		cmdFnSym, err := rawGoPlugin.Lookup(cmdFnName)
 		if err != nil {
 			log.Error("Error occurred while looking up command for plugin %s: %s", p.Name, err.Error())
 			continue
 		}
 
-		p.Manifest[cmdRegex] = cmdSym.(func(CommandPayload))
+		cmdRegex, _ := regexp.Compile(cmdRegexStr)    // TODO: Handle failed regex compilation
+		cmdFn := CmdFn(cmdFnSym.(func(*CmdDelegate))) // TODO: Handle failed cast
+
+		// TODO: Error handle more than one command named the same thing
+		p.CmdManifest[cmdFnName] = CmdLink{
+			Regexp: cmdRegex,
+			CmdFn:  cmdFn,
+		}
 	}
 
 	return &p, nil

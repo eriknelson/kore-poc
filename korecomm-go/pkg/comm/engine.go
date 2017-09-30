@@ -5,15 +5,36 @@ import (
 	"github.com/hegemone/kore-poc/korecomm-go/pkg/config"
 	log "github.com/sirupsen/logrus"
 	"path/filepath"
-	//"github.com/pborman/uuid"
 )
 
 // Engine - Heart of KoreComm, routes ingress and egress messages.
 type Engine struct {
-	ingressBuffer chan IngressMessage
-	egressBuffer  chan EgressMessage
-	plugins       map[string]*Plugin
-	adapters      map[string]*Adapter
+	// Messaging buffers
+	rawIngressBuffer chan rawIngressBufferMsg
+	ingressBuffer    chan ingressBufferMsg
+	egressBuffer     chan egressBufferMsg
+
+	// Loaded extensions
+	plugins  map[string]*Plugin
+	adapters map[string]*Adapter
+}
+
+type rawIngressBufferMsg struct {
+	AdapterName       string
+	RawIngressMessage RawIngressMessage
+}
+
+// NOTE: It's possible in the future we'll want some additional metadata
+// on this to assist the engine in routing a cmd to a plugin. Right now,
+// it's just the cmd less the trigger prefix, which get's matched on the
+// plugin's registered manifests
+type ingressBufferMsg struct {
+	IngressMessage IngressMessage
+}
+
+type egressBufferMsg struct {
+	Originator    Originator
+	EgressMessage EgressMessage
 }
 
 // NewEngine - Creates a new work engine.
@@ -21,10 +42,11 @@ func NewEngine() *Engine {
 	bufferSize := config.GetEngineConfig().BufferSize
 
 	return &Engine{
-		ingressBuffer: make(chan IngressMessage, bufferSize),
-		egressBuffer:  make(chan EgressMessage, bufferSize),
-		plugins:       make(map[string]*Plugin),
-		adapters:      make(map[string]*Adapter),
+		rawIngressBuffer: make(chan rawIngressBufferMsg, bufferSize),
+		ingressBuffer:    make(chan ingressBufferMsg, bufferSize),
+		egressBuffer:     make(chan egressBufferMsg, bufferSize),
+		plugins:          make(map[string]*Plugin),
+		adapters:         make(map[string]*Adapter),
 	}
 }
 
@@ -39,57 +61,124 @@ func (e *Engine) LoadExtensions() error {
 	return nil
 }
 
-type aggMsg struct {
-	AdapterName           string
-	AdapterIngressMessage AdapterIngressMessage
-}
-
 func (e *Engine) Start() {
 	log.Debug("Engine::Start")
 
-	// AdagerIngressMessage aggregation channel
-	aggregationInCh := make(chan aggMsg)
-
 	// Spawn listening routines for each adapter
 	for _, adapter := range e.adapters {
-		adapterInCh := make(chan AdapterIngressMessage)
+		adapterCh := make(chan RawIngressMessage)
 
-		go func(name string, aggCh <-chan aggMsg, adapterCh chan AdapterIngressMessage) {
+		go func(name string, rawIngressBuffer chan<- rawIngressBufferMsg, adapterch chan RawIngressMessage) {
 			// Tell the adapter to start listening and sending messages back via
 			// their own ingress channel. Listen should be non-blocking!
 			adapter.Listen(adapterCh)
 
 			// Have the listening routine sit and wait for messages back from the
-			// adapter. Once received, immediatelly pass them into the aggreation
+			// adapter. Once received, immediatelly pass them into the raw imsg buffer
 			// channel for processing.
-			for adapterInMsg := range adapterCh {
-				aggregationInCh <- aggMsg{name, adapterInMsg}
+			for ribm := range adapterCh {
+				rawIngressBuffer <- rawIngressBufferMsg{name, ribm}
 			}
-		}(adapter.Name, aggregationInCh, adapterInCh)
+		}(adapter.Name, e.rawIngressBuffer, adapterCh)
 	}
 
 	for {
 		select {
-		case aggMsg := <-aggregationInCh:
-			e.routeIngress(
-				processAdapterIngress(aggMsg.AdapterName, aggMsg.AdapterIngressMessage),
-			)
+		case m := <-e.rawIngressBuffer:
+			e.handleRawIngress(m)
+		case m := <-e.ingressBuffer:
+			e.handleIngress(m)
+		case m := <-e.egressBuffer:
+			e.handleEgress(m)
 		}
 	}
 }
 
-func (e *Engine) routeIngress(cmd string, im IngressMessage) {
-	log.Debugf("Engine::routeIngress -- cmd:[ %s ], IngressMessage: %+v", cmd, im)
+func (e *Engine) handleRawIngress(m rawIngressBufferMsg) {
+	go func(ibuff chan<- ingressBufferMsg, m rawIngressBufferMsg) {
+		adapterName := m.AdapterName
+		rm := m.RawIngressMessage
 
-	// TODO: Apply manifest to get set of fns
-	// TODO: Execute all cmds in goroutines, wrap up CmdPayload in some sugar so the
-	// plugins don't have to care about closing channels
-	// TODO: Pass responses off to egress! Something should check for no response
-	// case after cmd call. if not, call and close, continue on your way.
+		if !isCmd(rm.RawContent) {
+			return
+		}
+
+		if string(rm.RawContent[0]) != CMD_TRIGGER_PREFIX {
+			log.Warningf(
+				"raw content was flagged as a command, but does not contain trigger prefix, skipping...",
+			)
+			log.Warning(rm.RawContent)
+			return
+		}
+
+		content := parseRawContent(rm.RawContent)
+
+		ibuff <- ingressBufferMsg{
+			IngressMessage: IngressMessage{
+				Originator: Originator{Identity: rm.Identity, AdapterName: adapterName},
+				Content:    content,
+			},
+		}
+	}(e.ingressBuffer, m)
 }
 
-func (e *Engine) SendMessage(originator Originator, responseContent string) {
-	log.Debug("Engine::SendMessage -> %s", responseContent)
+func parseRawContent(rawContent string) string {
+	// NOTE: It's possible in the future we'll want more processing of the raw content
+	// some kind of metadata that might be useful for the engine to route the cmd
+	// to the plugin. for now
+	return rawContent[1:len(rawContent)]
+}
+
+func (e *Engine) handleIngress(ibm ingressBufferMsg) {
+	im := ibm.IngressMessage
+	log.Debugf("Engine::handleIngress: %+v", im)
+
+	go func() {
+		cmdMatches := e.applyCmdManifests(im.Content)
+
+		for _, cmdMatch := range cmdMatches {
+			delegate := NewCmdDelegate(im, cmdMatch.Submatches)
+			cmdMatch.CmdFn(&delegate)
+			if delegate.response != "" {
+				e.egressBuffer <- egressBufferMsg{
+					Originator:    im.Originator,
+					EgressMessage: EgressMessage{delegate.response},
+				}
+			}
+		}
+	}()
+}
+
+type cmdMatch struct {
+	CmdFn      CmdFn
+	Submatches []string
+}
+
+func (e *Engine) applyCmdManifests(content string) []cmdMatch {
+	matches := make([]cmdMatch, 0)
+
+	for _, plugin := range e.plugins {
+		for _ /*cmdName*/, cmdLink := range plugin.CmdManifest {
+			re := cmdLink.Regexp
+			subm := re.FindStringSubmatch(content)
+
+			if len(subm) > 0 {
+				matches = append(matches, cmdMatch{
+					CmdFn:      cmdLink.CmdFn,
+					Submatches: subm,
+				})
+			}
+		}
+	}
+
+	return matches
+}
+
+func (e *Engine) handleEgress(ebm egressBufferMsg) {
+	log.Debugf("Engine::handleEgress: %+v", ebm)
+	go func() {
+		e.adapters[ebm.Originator.AdapterName].SendMessage(ebm.EgressMessage)
+	}()
 }
 
 // TODO: load{Plugins,Adapters} are almost identical. Should make extension

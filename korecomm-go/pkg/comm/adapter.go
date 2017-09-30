@@ -1,19 +1,26 @@
 package comm
 
 import (
+	"fmt"
 	goplugin "plugin"
+	"regexp"
+)
+
+var (
+	CMD_TRIGGER_PREFIX = "!"
+	CMD_REGEX, _       = regexp.Compile(fmt.Sprintf("^%s\\S*($| )", CMD_TRIGGER_PREFIX))
 )
 
 type Adapter struct {
 	Name string
 
 	//fnInit        func(MessageReceivedCallback)
-	//fnSendMessage func(EgressMessage)
-	fnName   func() string
-	fnListen func(chan<- AdapterIngressMessage)
+	fnSendMessage func(string)
+	fnName        func() string
+	fnListen      func(chan<- RawIngressMessage)
 }
 
-func (a *Adapter) Listen(inChan chan<- AdapterIngressMessage) {
+func (a *Adapter) Listen(inChan chan<- RawIngressMessage) {
 	// Possibly some common logic an Adapter might want to do instead of having
 	// the engine call the raw plugin listen directly
 	// NOTE: Engine has already handled spawning the listen routines in their
@@ -22,6 +29,11 @@ func (a *Adapter) Listen(inChan chan<- AdapterIngressMessage) {
 	// written and immediately having their channels close or leaked. fnListen
 	// is expected to be long lived.
 	a.fnListen(inChan)
+}
+
+func (a *Adapter) SendMessage(emsg EgressMessage) {
+	// TODO: General processing
+	a.fnSendMessage(emsg.Serialize())
 }
 
 func LoadAdapter(adapterFile string) (*Adapter, error) {
@@ -43,17 +55,19 @@ func LoadAdapter(adapterFile string) (*Adapter, error) {
 	if err != nil {
 		return nil, err
 	}
-	a.fnListen = listenSym.(func(chan<- AdapterIngressMessage))
+	a.fnListen = listenSym.(func(chan<- RawIngressMessage))
+
+	sendMessageSym, err := rawGoPlugin.Lookup("SendMessage")
+	if err != nil {
+		return nil, err
+	}
+	a.fnSendMessage = sendMessageSym.(func(string))
 
 	return &a, nil
 }
 
-func processAdapterIngress(adapterName string, am AdapterIngressMessage) (string, IngressMessage) {
-	cmd := extractCmd(am.Content)
-	return cmd, IngressMessage{
-		Originator: Originator{Identity: am.Identity, AdapterName: adapterName},
-		Content:    am.Content,
-	}
+func isCmd(rawContent string) bool {
+	return CMD_REGEX.MatchString(rawContent)
 }
 
 func extractCmd(content string) string {

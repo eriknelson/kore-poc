@@ -10,10 +10,9 @@ type IngressMessage struct {
 	Originator Originator
 }
 
-// AdapterIngressMessage - Similar to an Ingress, but one expected to be
-// used by the adapters themselves. The Engine will annotate them with the
-// full Originator type as an IngressMessage before passing on to the Plugin.
-type AdapterIngressMessage struct {
-	Identity string
-	Content  string
+// RawIngressMessage - Raw, unprocessed message passed from the adapter to the
+// engine. Has not yet been parsed to determine if the message is a cmd or not.
+type RawIngressMessage struct {
+	Identity   string
+	RawContent string
 }

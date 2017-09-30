@@ -11,10 +11,10 @@ func Name() string {
 	return "bacon.plugins.kore.nsk.io"
 }
 
-func Manifest() map[string]string {
+func CmdManifest() map[string]string {
 	return map[string]string{
-		`/bacon$/`:       "CommandBacon",
-		`/bacon\s+(\S+)`: "CommandBaconGift",
+		`bacon$`:        "CmdBacon",
+		`bacon\s+(\S+)`: "CmdBaconGift",
 	}
 }
 
@@ -22,8 +22,8 @@ func Help() string {
 	return "Usage: !bacon [user]"
 }
 
-func CommandBacon(p comm.CommandPayload) {
-	log.Info("bacon::CommandBacon")
+func CmdBacon(p *comm.CmdDelegate) {
+	log.Infof("bacon.plugins::CmdBacon, IngressMessage: %+v", p.IngressMessage)
 
 	msg := p.IngressMessage
 	identity := msg.Originator.Identity
@@ -35,8 +35,8 @@ func CommandBacon(p comm.CommandPayload) {
 	p.SendResponse(response)
 }
 
-func CommandBaconGift(p comm.CommandPayload) {
-	log.Info("bacon::CommandBaconGift")
+func CmdBaconGift(p *comm.CmdDelegate) {
+	log.Infof("bacon.plugins::CmdBaconGift, IngressMessage: %+v", p.IngressMessage)
 
 	msg := p.IngressMessage
 	identity := msg.Originator.Identity
