@@ -40,7 +40,4 @@ run-image:
 push:
 	docker push ${IMAGE}:${TAG}
 
-#test:
-	#go test ./pkg/...
-
 .PHONY: vendor image push clean run image run-image push

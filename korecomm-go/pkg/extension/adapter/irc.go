@@ -1,3 +1,4 @@
+// Example irc adapter. Expected to be built as a standalone .so.
 package main
 
 import (
@@ -6,11 +7,20 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var _ircClient *mock.PlatformClient
+// pkg level client reference
+var ircAdapterClient *mock.PlatformClient
+
+////////////////////////////////////////////////////////////////////////////////
+// Concrete Behavioral Implementations
+////////////////////////////////////////////////////////////////////////////////
 
 func Init() {
 	log.Info("ex-irc.adapters::Init")
-	_ircClient = mock.NewPlatformClient("irc")
+	// NOTE: In a real adapter, this client is probably some kind of API used
+	// to actually speak to irc. For the purposes of this POC, we are using
+	// a mocked "PlatformClient" that is designed behave like that platform API might.
+	// It is driven by Stdin thanks to the StdinDemux.
+	ircAdapterClient = mock.NewPlatformClient("irc")
 }
 
 func Name() string {
@@ -20,10 +30,10 @@ func Name() string {
 func Listen(ingressCh chan<- comm.RawIngressMessage) {
 	log.Debug("ex-irc.adapters::Listen")
 
-	_ircClient.Connect()
+	ircAdapterClient.Connect()
 
 	go func() {
-		for clientMsg := range _ircClient.Chat {
+		for clientMsg := range ircAdapterClient.Chat {
 			ingressCh <- comm.RawIngressMessage{
 				Identity:   clientMsg.User,
 				RawContent: clientMsg.Message,
@@ -33,5 +43,5 @@ func Listen(ingressCh chan<- comm.RawIngressMessage) {
 }
 
 func SendMessage(m string) {
-	_ircClient.SendMessage(m)
+	ircAdapterClient.SendMessage(m)
 }

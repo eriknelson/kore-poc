@@ -6,11 +6,19 @@ import (
 	"regexp"
 )
 
-var (
-	CMD_TRIGGER_PREFIX = "!"
-	CMD_REGEX, _       = regexp.Compile(fmt.Sprintf("^%s\\S*($| )", CMD_TRIGGER_PREFIX))
-)
+// The prefix trigger used to denote a cmd.
+// Example: !droplet start skynet
+const adapterCmdTriggerPrefix = "!"
 
+// Regexp applied to check isCmd.
+var adapterCmdRegexp, _ = regexp.Compile(fmt.Sprintf("^%s\\S*($| )",
+	adapterCmdTriggerPrefix))
+
+// Adapter is an abstraction that should be implemented to present a standard
+// interface to the comm server for communicating to, and from external platforms.
+// Similar to the `Plugin`, it is a facade type that delegates  actions like
+// sending and receiving messages to concrete implementations dynamically loaded
+// from shared libraries.
 type Adapter struct {
 	Name string
 
@@ -20,6 +28,10 @@ type Adapter struct {
 	fnListen      func(chan<- RawIngressMessage)
 }
 
+// Listen is the public trigger that initiates an adapter to start listening
+// to external platform events. It should be implemented as non-blocking and
+// push `RawIngressMessage`s to the inChan on the receipt of raw messages
+// from the external platform.
 func (a *Adapter) Listen(inChan chan<- RawIngressMessage) {
 	// Possibly some common logic an Adapter might want to do instead of having
 	// the engine call the raw plugin listen directly
@@ -31,12 +43,20 @@ func (a *Adapter) Listen(inChan chan<- RawIngressMessage) {
 	a.fnListen(inChan)
 }
 
+// SendMessage is the public trigger indicating a dynamically loaded adapter
+// should transmit an `EgressMessage` to its platform. Dynamically loaded
+// adapters must define how that is done.
 func (a *Adapter) SendMessage(emsg EgressMessage) {
 	// TODO: General processing
 	a.fnSendMessage(emsg.Serialize())
 }
 
+// LoadAdapter loads adapter behavior from a given .so adapter file
 func LoadAdapter(adapterFile string) (*Adapter, error) {
+	// TODO: Need a *lot* of validation here to make sure a bad adapter doesn't
+	// just crash the server.
+	// -> Actually confirm the casts are valid and these functions look like they should?
+	// TODO: Can the hardcoded pattern of $PROPERTY Lookup -> Cast be made more elegant?
 	a := Adapter{}
 
 	rawGoPlugin, err := goplugin.Open(adapterFile)
@@ -72,15 +92,14 @@ func LoadAdapter(adapterFile string) (*Adapter, error) {
 	return &a, nil
 }
 
+// Init gives adapters an opportunity to implement an initialization hook.
+// Typically used for things like setting up initial connection to external
+// platform APIs, checking for the presence of credentials and their validity, etc.
 func (a *Adapter) Init() {
 	a.fnInit()
 }
 
 func isCmd(rawContent string) bool {
-	return CMD_REGEX.MatchString(rawContent)
-}
-
-func extractCmd(content string) string {
-	// TODO: Extract cmd
-	return "mock_cmd"
+	// isCmd is where the adapter defines whether or not raw content is indeed a Cmd.
+	return adapterCmdRegexp.MatchString(rawContent)
 }

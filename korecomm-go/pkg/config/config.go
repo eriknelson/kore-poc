@@ -1,3 +1,8 @@
+// config is responsible for managing the config of the system and presenting
+// that to comm in a controlled way. For the purposes of the POC, it is
+// mostly hardcoded in its implementation. In practice, this pkg should handle
+// things like validation, and file loading/parsing, in addition to env var
+// loading for things like secret credentials.
 package config
 
 import (
@@ -76,6 +81,5 @@ func GetAdapterConfig() AdapterConfig {
 
 func loadConfigFile() *map[string]interface{} {
 	// Load file location from env var, or use default
-	// file := GetEnv("KORECOMM_CONFIG") || "/etc/kore/comm_config.yaml"
 	return &mockConfig
 }

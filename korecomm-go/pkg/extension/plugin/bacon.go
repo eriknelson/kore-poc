@@ -1,3 +1,4 @@
+// Example plugin. Implements the classic bacon cinch plugin.
 package main
 
 import (
@@ -7,7 +8,6 @@ import (
 )
 
 func Name() string {
-	// Reverse DNS identifiers
 	return "bacon.plugins.kore.nsk.io"
 }
 

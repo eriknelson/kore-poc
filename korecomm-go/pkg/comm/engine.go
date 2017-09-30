@@ -7,38 +7,22 @@ import (
 	"path/filepath"
 )
 
-// Engine - Heart of KoreComm, routes ingress and egress messages.
+// Engine is the heart of korecomm. It's responsible for routing traffic amongst
+// buffers in a concurrent way, as well as the loading and execution of extensions.
 type Engine struct {
 	// Messaging buffers
 	rawIngressBuffer chan rawIngressBufferMsg
 	ingressBuffer    chan ingressBufferMsg
 	egressBuffer     chan egressBufferMsg
 
-	// Loaded extensions
+	// Extensions
 	plugins  map[string]*Plugin
 	adapters map[string]*Adapter
 }
 
-type rawIngressBufferMsg struct {
-	AdapterName       string
-	RawIngressMessage RawIngressMessage
-}
-
-// NOTE: It's possible in the future we'll want some additional metadata
-// on this to assist the engine in routing a cmd to a plugin. Right now,
-// it's just the cmd less the trigger prefix, which get's matched on the
-// plugin's registered manifests
-type ingressBufferMsg struct {
-	IngressMessage IngressMessage
-}
-
-type egressBufferMsg struct {
-	Originator    Originator
-	EgressMessage EgressMessage
-}
-
-// NewEngine - Creates a new work engine.
+// NewEngine creates a new Engine.
 func NewEngine() *Engine {
+	// Configurable size of the internal message buffers
 	bufferSize := config.GetEngineConfig().BufferSize
 
 	return &Engine{
@@ -50,6 +34,8 @@ func NewEngine() *Engine {
 	}
 }
 
+// LoadExtensions will attempt to load enabled plugins and extensions. Includes
+// extension init (used for things like establishing connections with platforms).
 func (e *Engine) LoadExtensions() error {
 	log.Info("Loading extensions")
 	if err := e.loadPlugins(); err != nil {
@@ -61,6 +47,13 @@ func (e *Engine) LoadExtensions() error {
 	return nil
 }
 
+// Start will cause the engine to start listening on all successfully loaded
+// adapters. On the receipt of any new message from an adapter, it will parse
+// the message and determine if the contents are a command. If the message does
+// contain a command, it will be transformed to an `IngressMessage` and routed
+// to matching plugin commands. If the plugin sends back a message to the
+// originator, it will be transformed to an `EgressMessage` and routed to the
+// originating adapter for transmission via the client.
 func (e *Engine) Start() {
 	log.Debug("Engine::Start")
 
@@ -68,20 +61,21 @@ func (e *Engine) Start() {
 	for _, adapter := range e.adapters {
 		adapterCh := make(chan RawIngressMessage)
 
-		go func(adapter *Adapter, adapterch chan RawIngressMessage) {
+		go func(adapter *Adapter, adapterCh chan RawIngressMessage) {
 			// Tell the adapter to start listening and sending messages back via
 			// their own ingress channel. Listen should be non-blocking!
 			adapter.Listen(adapterCh)
 
-			// Have the listening routine sit and wait for messages back from the
-			// adapter. Once received, immediatelly pass them into the raw imsg buffer
-			// channel for processing.
-			for ribm := range adapterCh {
-				e.rawIngressBuffer <- rawIngressBufferMsg{adapter.Name, ribm}
+			// Engine listens to the N channels the adapters are transmitting on
+			// for RawIngressMessages. Adapter channels are fanned-in to the
+			// rawIngressBuffer for parsing.
+			for rim := range adapterCh {
+				e.rawIngressBuffer <- rawIngressBufferMsg{adapter.Name, rim}
 			}
 		}(adapter, adapterCh)
 	}
 
+	// Wire up messaging events to their handlers
 	for {
 		select {
 		case m := <-e.rawIngressBuffer:
@@ -94,8 +88,32 @@ func (e *Engine) Start() {
 	}
 }
 
+// Buffer messages are internal messaging types usually containing a public
+// payload + some kind of metadata, ex: to facilitate routing
+
+type rawIngressBufferMsg struct {
+	AdapterName       string
+	RawIngressMessage RawIngressMessage
+}
+
+type ingressBufferMsg struct {
+	// NOTE: It's possible in the future we'll want some additional metadata
+	// on this to assist the engine in routing a cmd to a plugin. Right now,
+	// it's just the cmd less the trigger prefix, which get's matched on the
+	// plugin's `CmdManifest`
+	IngressMessage IngressMessage
+}
+
+type egressBufferMsg struct {
+	Originator    Originator
+	EgressMessage EgressMessage
+}
+
+// handleRawIngress main function is to filter commands from raw messages.
+// If a message is determined to be a command, it is parsed and structured as
+// an `IngressMessage`, then passed to the ingressBuffer for further handling.
 func (e *Engine) handleRawIngress(m rawIngressBufferMsg) {
-	go func(ibuff chan<- ingressBufferMsg, m rawIngressBufferMsg) {
+	go func() {
 		adapterName := m.AdapterName
 		rm := m.RawIngressMessage
 
@@ -103,7 +121,7 @@ func (e *Engine) handleRawIngress(m rawIngressBufferMsg) {
 			return
 		}
 
-		if string(rm.RawContent[0]) != CMD_TRIGGER_PREFIX {
+		if string(rm.RawContent[0]) != adapterCmdTriggerPrefix {
 			log.Warningf(
 				"raw content was flagged as a command, but does not contain trigger prefix, skipping...",
 			)
@@ -113,13 +131,13 @@ func (e *Engine) handleRawIngress(m rawIngressBufferMsg) {
 
 		content := parseRawContent(rm.RawContent)
 
-		ibuff <- ingressBufferMsg{
+		e.ingressBuffer <- ingressBufferMsg{
 			IngressMessage: IngressMessage{
 				Originator: Originator{Identity: rm.Identity, AdapterName: adapterName},
 				Content:    content,
 			},
 		}
-	}(e.ingressBuffer, m)
+	}()
 }
 
 func parseRawContent(rawContent string) string {
@@ -129,6 +147,10 @@ func parseRawContent(rawContent string) string {
 	return rawContent[1:len(rawContent)]
 }
 
+// handleIngress is responsible for routing `IngressMessage`s to the set of
+// matching plugin cmds that have been registered. If the `CmdDelegate` passed
+// to the plugin cmd contains a response, it will construct an `EgressMessage`
+// and push to the `Engine`'s egress buffer for dispatch to the relevant adapter.
 func (e *Engine) handleIngress(ibm ingressBufferMsg) {
 	im := ibm.IngressMessage
 	log.Debugf("Engine::handleIngress: %+v", im)
@@ -138,7 +160,12 @@ func (e *Engine) handleIngress(ibm ingressBufferMsg) {
 
 		for _, cmdMatch := range cmdMatches {
 			delegate := NewCmdDelegate(im, cmdMatch.Submatches)
+
+			// Execute plugin command and pass delegate as an intermediary
 			cmdMatch.CmdFn(&delegate)
+
+			// If the plugin has sent a response to the delegate, let's build
+			// an `EgressMessage` and push that onto the outgoing buffer for dispatch
 			if delegate.response != "" {
 				e.egressBuffer <- egressBufferMsg{
 					Originator:    im.Originator,
@@ -154,6 +181,8 @@ type cmdMatch struct {
 	Submatches []string
 }
 
+// applyCmdManifests runs the content against all registered plugin `CmdLink`s
+// to determine the set of plugin cmd's that need to be executed.
 func (e *Engine) applyCmdManifests(content string) []cmdMatch {
 	matches := make([]cmdMatch, 0)
 
@@ -174,6 +203,8 @@ func (e *Engine) applyCmdManifests(content string) []cmdMatch {
 	return matches
 }
 
+// handleEgress simply routes an `EgressMessage` off the egressBuffer to an
+// adapter for transmission.
 func (e *Engine) handleEgress(ebm egressBufferMsg) {
 	log.Debugf("Engine::handleEgress: %+v", ebm)
 	go func() {
@@ -185,8 +216,9 @@ func (e *Engine) handleEgress(ebm egressBufferMsg) {
 // loading generic.
 func (e *Engine) loadPlugins() error {
 	config := config.GetPluginConfig()
-	// Check that requested plugins are available in dir, log if not
 	log.Infof("Loading plugins from: %v", config.Dir)
+
+	// TODO: Check that requested plugins are available in dir, log if not
 	for _, pluginName := range config.Enabled {
 		log.Infof("-> %v", pluginName)
 		pluginFile := filepath.Join(
@@ -196,6 +228,8 @@ func (e *Engine) loadPlugins() error {
 
 		loadedPlugin, err := LoadPlugin(pluginFile)
 		if err != nil {
+			// TODO: Probably want this to be more resilient so the comm server can
+			// skip problematic plugins while still loading valid ones.
 			return err
 		}
 
@@ -212,8 +246,9 @@ func (e *Engine) loadPlugins() error {
 
 func (e *Engine) loadAdapters() error {
 	config := config.GetAdapterConfig()
-	// Check that requested adapters are available in dir, log if not
 	log.Infof("Loading adapters from: %v", config.Dir)
+
+	// TODO: Check that requested adapters are available in dir, log if not
 	for _, adapterName := range config.Enabled {
 		log.Infof("-> %v", adapterName)
 		adapterFile := filepath.Join(
@@ -224,9 +259,13 @@ func (e *Engine) loadAdapters() error {
 
 		loadedAdapter, err := LoadAdapter(adapterFile)
 		if err != nil {
+			// TODO: Probably want this to be more resilient so the comm server can
+			// skip problematic adapters while still loading valid ones.
 			return err
 		}
 
+		// Initialize the adapters in determinic sequence. Init should be used for
+		// things like establishing a connection with an external platform.
 		loadedAdapter.Init()
 		e.adapters[loadedAdapter.Name] = loadedAdapter
 	}
